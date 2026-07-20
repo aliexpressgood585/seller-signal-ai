@@ -1,4 +1,25 @@
 // src/lib/data.js
+const MONTHS_HE = ["ינו׳","פבר׳","מרץ","אפר׳","מאי","יונ׳","יול׳","אוג׳","ספט׳","אוק׳","נוב׳","דצמ׳"];
+
+export function getPriceHistory(signal) {
+  const now = new Date();
+  const count = Math.max(3, Math.min(6, Math.ceil(signal.daysOnMarket / 20)));
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(now);
+    d.setMonth(d.getMonth() - (count - 1 - i));
+    const label = MONTHS_HE[d.getMonth()];
+    let price;
+    if (i === count - 1) {
+      price = signal.price;
+    } else if (signal.prevPrice) {
+      price = i < count - 2 ? signal.prevPrice : Math.round((signal.prevPrice + signal.price) / 2);
+    } else {
+      const wave = 1 + Math.sin(i * 1.1) * 0.018;
+      price = Math.round(signal.price * wave);
+    }
+    return { label, price };
+  });
+}
 
 export const fmt = (n) => n >= 1e6 ? `₪${(n / 1e6).toFixed(1)}M` : `₪${(n / 1000).toFixed(0)}K`;
 export const fmtFull = (n) => `₪${n.toLocaleString("he-IL")}`;

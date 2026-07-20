@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Ring, Spinner, Card, AIBox, Btn } from "../components/UI";
 import { askGemini, PROMPTS } from "../hooks/useGemini";
 import { SIGNALS, PIPELINE, BUYERS, INIT_TASKS, fmt, fmtFull, sColor, stColor, stLabel, waLink, STAGES } from "../lib/data";
+import { useCRM, CRM_TYPES, fmtTs } from "../hooks/useCRM";
 
 // ─── shared toast state ──────────────────────────────────────
 // Each page calls window.__toast__ if it needs toast.
@@ -177,6 +178,9 @@ export function Signals() {
                     <button onClick={() => showToast(`נמצאו ${s.matchingBuyers} קונים תואמים`)} style={{ background:"rgba(41,121,255,0.1)", color:"#2979FF", border:"1px solid rgba(41,121,255,0.2)", borderRadius:10, padding:"10px 12px", fontSize:12, fontWeight:600, cursor:"pointer" }}>👥 {s.matchingBuyers}</button>
                     <button onClick={() => { setSaved(p => ({ ...p, [s.id]:!p[s.id] })); showToast(isSaved?"הוסר":"נשמר ✓"); }} style={{ background:isSaved?"rgba(0,191,165,0.1)":"rgba(255,255,255,0.04)", color:isSaved?"#00BFA5":"rgba(255,255,255,0.4)", border:`1px solid ${isSaved?"rgba(0,191,165,0.25)":"#1E2D45"}`, borderRadius:10, padding:"10px 12px", fontSize:12, fontWeight:600, cursor:"pointer" }}>{isSaved?"✓":"🔖"}</button>
                   </div>
+                  <button onClick={() => nav(`/signals/${s.id}`)} style={{ width:"100%", padding:"8px", background:"rgba(255,255,255,0.03)", border:"1px solid #1E2D45", borderRadius:9, color:"rgba(255,255,255,0.4)", fontSize:11, cursor:"pointer" }}>
+                    פרטים מלאים + היסטוריה + CRM →
+                  </button>
                   <div style={{ fontSize:10, color:"rgba(255,255,255,0.2)", borderTop:"1px solid #1E2D45", paddingTop:8 }}>
                     מקור: {s.source} · ציון: {s.score}/100 · {s.daysOnMarket} ימים
                   </div>
@@ -273,6 +277,50 @@ export function Pipeline() {
 }
 
 // ─── Buyers ──────────────────────────────────────────────────
+function BuyerCRMLog({ buyerId }) {
+  const { addLog, getLogs } = useCRM();
+  const [note, setNote] = useState("");
+  const [type, setType] = useState("call");
+  const logs = getLogs(`buyer_${buyerId}`);
+
+  function add() {
+    if (!note.trim()) return;
+    addLog(`buyer_${buyerId}`, { type, note: note.trim() });
+    setNote("");
+  }
+
+  return (
+    <Card style={{ padding:14 }}>
+      <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:11 }}>📋 יומן פעילות</div>
+      <div style={{ display:"flex", gap:7, marginBottom:10 }}>
+        <select value={type} onChange={e=>setType(e.target.value)} style={{ background:"#070B17", border:"1px solid #1E2D45", borderRadius:9, padding:"8px 9px", color:"#fff", fontSize:11, outline:"none", flexShrink:0 }}>
+          {Object.entries(CRM_TYPES).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
+        </select>
+        <input value={note} onChange={e=>setNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="הוסף פעילות..." style={{ flex:1, background:"#070B17", border:"1px solid #1E2D45", borderRadius:9, padding:"8px 11px", color:"#fff", fontSize:11, outline:"none", direction:"rtl" }}/>
+        <button onClick={add} disabled={!note.trim()} style={{ padding:"8px 12px", background:note.trim()?"linear-gradient(135deg,#FF5722,#FFA000)":"#1E2D45", border:"none", borderRadius:9, color:"#fff", fontSize:14, cursor:note.trim()?"pointer":"default" }}>+</button>
+      </div>
+      {logs.length===0
+        ? <div style={{ textAlign:"center", padding:"16px 0", color:"rgba(255,255,255,0.2)", fontSize:11 }}>אין פעילות עדיין</div>
+        : <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {logs.map(log=>{
+              const t=CRM_TYPES[log.type]||CRM_TYPES.note;
+              return (
+                <div key={log.id} style={{ display:"flex", gap:8, padding:"9px 11px", background:"#070B17", border:"1px solid #1E2D45", borderRadius:9, alignItems:"flex-start" }}>
+                  <span style={{ fontSize:13, flexShrink:0 }}>{t.icon}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)" }}>{log.note}</div>
+                    <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)", marginTop:2 }}>{fmtTs(log.ts)}</div>
+                  </div>
+                  <span style={{ fontSize:8, fontWeight:700, color:t.color, padding:"1px 6px", borderRadius:99, background:`${t.color}15`, whiteSpace:"nowrap" }}>{t.label}</span>
+                </div>
+              );
+            })}
+          </div>
+      }
+    </Card>
+  );
+}
+
 export function Buyers() {
   const [sel, setSel] = useState(null);
   const [matchTxt, setMatchTxt] = useState("");
@@ -377,6 +425,7 @@ export function Buyers() {
               <p style={{ fontSize:13 }}>בחר קונה לצפייה</p>
             </Card>
           )}
+          {buyer && <BuyerCRMLog buyerId={buyer.id} />}
         </div>
       </div>
     </div>
