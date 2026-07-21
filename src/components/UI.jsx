@@ -48,7 +48,7 @@ export function AIBox({ text, loading }) {
     <div style={{ background:"rgba(255,87,34,0.06)", border:"1px solid rgba(255,87,34,0.15)", borderRadius:12, padding:13 }}>
       <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
         <span>🤖</span>
-        <span style={{ fontSize:11, fontWeight:700, color:"#FF5722" }}>ניתוח Gemini AI</span>
+        <span style={{ fontSize:11, fontWeight:700, color:"#FF5722" }}>ניתוח Claude AI</span>
       </div>
       {loading
         ? <div style={{ display:"flex", alignItems:"center", gap:8 }}><Spinner/><span style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>מנתח...</span></div>

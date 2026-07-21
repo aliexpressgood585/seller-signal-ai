@@ -487,7 +487,7 @@ export function Buyers() {
       const txt = await askGemini(PROMPTS.buyerMatch(buyer, best));
       setPitches(p => ({ ...p, [buyer.id]: txt }));
     } catch (e) {
-      if (e.message === "NO_KEY") setToast("⚠️ הגדר מפתח Gemini בעמוד AI");
+      if (e.message === "NO_KEY") setToast("⚠️ הגדר מפתח Claude בעמוד AI");
       else setToast("⚠️ " + e.message);
     }
     setLoadingId(null);
