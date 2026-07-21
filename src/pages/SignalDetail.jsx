@@ -5,6 +5,7 @@ import { Ring, Spinner, AIBox, Btn, Card } from "../components/UI";
 import { askGemini, PROMPTS } from "../hooks/useGemini";
 import { useCRM, CRM_TYPES, fmtTs } from "../hooks/useCRM";
 import { useSignals, useBuyers, matchScore } from "../hooks/useStore";
+import { getRealDeals, fmtDealDate, realDataMeta } from "../lib/realDeals";
 
 // ─── Price chart ─────────────────────────────────────────────
 function PriceChart({ signal }) {
@@ -134,6 +135,8 @@ export function SignalDetail() {
     ? buyers.filter(b => matchScore(b, signal) > 0)
     : [];
 
+  const realDeals = signal ? getRealDeals(signal.address) : [];
+
   async function loadInsight() {
     if (insight || analyzing) return;
     setAnalyzing(true);
@@ -159,6 +162,7 @@ export function SignalDetail() {
 
   const TABS = [
     { id: "ai",      label: "🤖 ניתוח AI"       },
+    { id: "deals",   label: `🏛 עסקאות אמת${realDeals.length ? ` (${realDeals.length})` : ""}` },
     { id: "price",   label: "📈 היסטוריית מחיר" },
     { id: "buyers",  label: `👥 קונים (${matchingBuyers.length})` },
     { id: "crm",     label: "📋 CRM"             },
@@ -257,6 +261,59 @@ export function SignalDetail() {
                   ✨ יצור Pitch / WhatsApp / דוח שמאות
                 </Btn>
               </div>
+            )}
+          </div>
+        )}
+
+        {tab === "deals" && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>עסקאות אמיתיות באזור</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#00BFA5", padding: "2px 8px", borderRadius: 99, background: "rgba(0,191,165,0.1)", border: "1px solid rgba(0,191,165,0.25)" }}>רשות המסים</span>
+            </div>
+
+            {realDeals.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "24px 12px", color: "rgba(255,255,255,0.3)", fontSize: 12, lineHeight: 1.6 }}>
+                {realDataMeta.total > 0
+                  ? "אין עדיין עסקאות אמת לאזור זה במאגר."
+                  : "נתוני העסקאות האמיתיים נטענים ב-build הבא. עד אז אין מה להציג כאן."}
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 10, lineHeight: 1.5 }}>
+                  {realDeals.length} עסקאות אחרונות שדווחו לרשות המסים בעיר — השווה מול המחיר המבוקש ({fmtFull(signal.price)}).
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {realDeals.map((d, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", background: "#070B17", border: "1px solid #1E2D45", borderRadius: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.address || d.city}</div>
+                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
+                          {[
+                            d.rooms ? `${d.rooms} חד׳` : null,
+                            d.size ? `${d.size}מ"ר` : null,
+                            d.floor ? `קומה ${d.floor}` : null,
+                            fmtDealDate(d.date),
+                          ].filter(Boolean).join(" · ")}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "left", flexShrink: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: "#00BFA5" }}>{fmtFull(d.price)}</div>
+                        {d.size ? (
+                          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>
+                            {fmtFull(Math.round(d.price / d.size))}/מ"ר
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {realDataMeta.generatedAt && (
+                  <div style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", textAlign: "center", marginTop: 12 }}>
+                    עודכן מ-nadlan.gov.il · {fmtDealDate(realDataMeta.generatedAt.slice(0, 10))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
