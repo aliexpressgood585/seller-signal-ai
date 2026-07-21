@@ -26,6 +26,10 @@ jobs:
 
       - run: npm ci
 
+      - name: Fetch real estate deals (nadlan.gov.il)
+        run: node scripts/fetchNadlan.mjs
+        continue-on-error: true
+
       - name: Build
         run: npm run build
         env:
