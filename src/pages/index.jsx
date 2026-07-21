@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fmt, fmtFull, sColor, stColor, stLabel, waLink, STAGES } from "../lib/data";
 import { Ring, Spinner, AIBox, Btn, Card, Toast } from "../components/UI";
-import { askGemini, PROMPTS } from "../hooks/useGemini";
+import { askGemini, PROMPTS, getGeminiKey, setGeminiKey } from "../hooks/useGemini";
 import { useCRM, CRM_TYPES, fmtTs } from "../hooks/useCRM";
 import { useSignals, useBuyers, usePipeline, useTasks, matchScore } from "../hooks/useStore";
 
@@ -486,7 +486,10 @@ export function Buyers() {
     try {
       const txt = await askGemini(PROMPTS.buyerMatch(buyer, best));
       setPitches(p => ({ ...p, [buyer.id]: txt }));
-    } catch (e) { setToast("⚠️ " + e.message); }
+    } catch (e) {
+      if (e.message === "NO_KEY") setToast("⚠️ הגדר מפתח Gemini בעמוד AI");
+      else setToast("⚠️ " + e.message);
+    }
     setLoadingId(null);
   }
 
@@ -662,14 +665,50 @@ const AI_TOOLS = [
   { id:"whatsapp",  icon:"💬",  label:"הודעת WhatsApp", desc:"הודעה לתיאום שיחה" },
 ];
 
+function GeminiKeySetup({ onSaved }) {
+  const [k, setK] = useState("");
+  function save() {
+    if (!k.trim()) return;
+    setGeminiKey(k.trim());
+    onSaved();
+  }
+  return (
+    <Card style={{ padding:20, border:"1px solid rgba(255,160,0,0.3)", background:"rgba(255,160,0,0.05)" }}>
+      <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>🤖</div>
+      <div style={{ fontSize:14, fontWeight:700, color:"#fff", textAlign:"center", marginBottom:6 }}>הגדר מפתח Gemini AI</div>
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", textAlign:"center", marginBottom:16, lineHeight:1.6 }}>
+        כדי להשתמש בכלי ה-AI נדרש מפתח API מ-Google Gemini.<br />
+        המפתח נשמר רק במכשיר שלך — לא נשלח לשום שרת.
+      </div>
+      <div style={S.row}>
+        <label style={S.label}>מפתח Gemini API</label>
+        <input
+          style={{ ...S.input, fontFamily:"monospace", fontSize:11 }}
+          value={k}
+          onChange={e => setK(e.target.value)}
+          placeholder="AIza..."
+          type="password"
+          autoComplete="off"
+        />
+      </div>
+      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:14, textAlign:"center" }}>
+        קבל מפתח חינמי בכתובת: <span style={{ color:"#FFA000" }}>aistudio.google.com</span>
+      </div>
+      <Btn onClick={save} disabled={!k.trim()} style={{ width:"100%", justifyContent:"center" }}>שמור והפעל AI ✓</Btn>
+    </Card>
+  );
+}
+
 export function AITools() {
   const { signals } = useSignals();
+  const [hasKey, setHasKey] = useState(() => !!getGeminiKey());
   const [tool, setTool] = useState("pitch");
   const [selId, setSelId] = useState(signals[0]?.id || "");
   const [extra, setExtra] = useState({ owner:"", days:"", price:"" });
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState("");
+  const [showKeyEdit, setShowKeyEdit] = useState(false);
 
   const sig = signals.find(s => s.id === selId) || signals[0];
 
@@ -686,7 +725,10 @@ export function AITools() {
       if (tool === "analyze")   prompt = PROMPTS.analyze(sig.address, sig.rooms, sig.size, price, days);
       if (tool === "whatsapp")  prompt = PROMPTS.whatsapp(owner, sig.address, days);
       setResult(await askGemini(prompt));
-    } catch (e) { setResult("⚠️ " + e.message); }
+    } catch (e) {
+      if (e.message === "NO_KEY") { setHasKey(false); }
+      else { setResult("⚠️ " + e.message); }
+    }
     setLoading(false);
   }
 
@@ -695,48 +737,75 @@ export function AITools() {
     navigator.clipboard.writeText(result).then(() => setToast("הועתק ✓"));
   }
 
+  function clearKey() {
+    setGeminiKey("");
+    setHasKey(false);
+    setResult("");
+    setShowKeyEdit(false);
+  }
+
   return (
     <div style={{ padding:18, display:"flex", flexDirection:"column", gap:14 }}>
       {toast && <Toast msg={toast} onDone={() => setToast("")} />}
-      <h2 style={{ fontSize:16, fontWeight:800, color:"#fff", margin:0 }}>🤖 כלי AI</h2>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-        {AI_TOOLS.map(t => (
-          <Card key={t.id} onClick={() => { setTool(t.id); setResult(""); }} style={{ padding:"12px 14px", cursor:"pointer", border: tool === t.id ? "1px solid #FF5722" : "1px solid #1E2D45", background: tool === t.id ? "rgba(255,87,34,0.08)" : "#0D1526" }}>
-            <div style={{ fontSize:20, marginBottom:5 }}>{t.icon}</div>
-            <div style={{ fontSize:12, fontWeight:700, color: tool === t.id ? "#FF5722" : "#fff" }}>{t.label}</div>
-            <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{t.desc}</div>
-          </Card>
-        ))}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <h2 style={{ fontSize:16, fontWeight:800, color:"#fff", margin:0 }}>🤖 כלי AI</h2>
+        {hasKey && (
+          <button onClick={() => setShowKeyEdit(!showKeyEdit)} style={{ fontSize:11, color:"rgba(255,255,255,0.3)", background:"none", border:"none", cursor:"pointer" }}>
+            ⚙️ מפתח API
+          </button>
+        )}
       </div>
 
-      <div style={S.row}>
-        <label style={S.label}>בחר נכס</label>
-        <select style={S.sel} value={selId} onChange={e => { setSelId(e.target.value); setResult(""); }}>
-          {signals.map(s => <option key={s.id} value={s.id}>{s.address} — {fmt(s.price)}</option>)}
-        </select>
-      </div>
+      {showKeyEdit && hasKey && (
+        <Card style={{ padding:14 }}>
+          <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>מפתח פעיל: AIza•••••••••</div>
+          <Btn onClick={clearKey} variant="ghost" style={{ color:"#F44336", width:"100%", justifyContent:"center" }}>🗑 מחק מפתח</Btn>
+        </Card>
+      )}
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-        <div style={S.row}><label style={S.label}>שם בעל נכס (אופציונלי)</label><input style={S.input} value={extra.owner} onChange={e => setExtra(p => ({ ...p, owner:e.target.value }))} placeholder={sig?.ownerName || ""} /></div>
-        {(tool !== "valuation") && <div style={S.row}><label style={S.label}>ימים בשוק (אופציונלי)</label><input style={S.input} type="number" value={extra.days} onChange={e => setExtra(p => ({ ...p, days:e.target.value }))} placeholder={String(sig?.daysOnMarket || "")} /></div>}
-        {(tool !== "whatsapp") && <div style={S.row}><label style={S.label}>מחיר (אופציונלי)</label><input style={S.input} type="number" value={extra.price} onChange={e => setExtra(p => ({ ...p, price:e.target.value }))} placeholder={String(sig?.price || "")} /></div>}
-      </div>
+      {!hasKey ? (
+        <GeminiKeySetup onSaved={() => { setHasKey(true); setShowKeyEdit(false); }} />
+      ) : (
+        <>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            {AI_TOOLS.map(t => (
+              <Card key={t.id} onClick={() => { setTool(t.id); setResult(""); }} style={{ padding:"12px 14px", cursor:"pointer", border: tool === t.id ? "1px solid #FF5722" : "1px solid #1E2D45", background: tool === t.id ? "rgba(255,87,34,0.08)" : "#0D1526" }}>
+                <div style={{ fontSize:20, marginBottom:5 }}>{t.icon}</div>
+                <div style={{ fontSize:12, fontWeight:700, color: tool === t.id ? "#FF5722" : "#fff" }}>{t.label}</div>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{t.desc}</div>
+              </Card>
+            ))}
+          </div>
 
-      <Btn onClick={run} disabled={loading || !sig} style={{ width:"100%", justifyContent:"center" }}>
-        {loading ? <><Spinner size={14} /> מייצר...</> : `✨ יצור ${AI_TOOLS.find(t => t.id === tool)?.label}`}
-      </Btn>
+          <div style={S.row}>
+            <label style={S.label}>בחר נכס</label>
+            <select style={S.sel} value={selId} onChange={e => { setSelId(e.target.value); setResult(""); }}>
+              {signals.map(s => <option key={s.id} value={s.id}>{s.address} — {fmt(s.price)}</option>)}
+            </select>
+          </div>
 
-      {(result || loading) && (
-        <div>
-          <AIBox text={result} loading={loading} />
-          {result && (
-            <div style={{ display:"flex", gap:8, marginTop:10 }}>
-              <Btn onClick={copy} variant="secondary" style={{ flex:1, justifyContent:"center" }}>📋 העתק</Btn>
-              {tool === "whatsapp" && sig && <Btn href={waLink(sig.ownerPhone)} target="_blank" variant="green" style={{ flex:1, justifyContent:"center" }}>💬 שלח ב-WA</Btn>}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <div style={S.row}><label style={S.label}>שם בעל נכס (אופציונלי)</label><input style={S.input} value={extra.owner} onChange={e => setExtra(p => ({ ...p, owner:e.target.value }))} placeholder={sig?.ownerName || ""} /></div>
+            {(tool !== "valuation") && <div style={S.row}><label style={S.label}>ימים בשוק (אופציונלי)</label><input style={S.input} type="number" value={extra.days} onChange={e => setExtra(p => ({ ...p, days:e.target.value }))} placeholder={String(sig?.daysOnMarket || "")} /></div>}
+            {(tool !== "whatsapp") && <div style={S.row}><label style={S.label}>מחיר (אופציונלי)</label><input style={S.input} type="number" value={extra.price} onChange={e => setExtra(p => ({ ...p, price:e.target.value }))} placeholder={String(sig?.price || "")} /></div>}
+          </div>
+
+          <Btn onClick={run} disabled={loading || !sig} style={{ width:"100%", justifyContent:"center" }}>
+            {loading ? <><Spinner size={14} /> מייצר...</> : `✨ יצור ${AI_TOOLS.find(t => t.id === tool)?.label}`}
+          </Btn>
+
+          {(result || loading) && (
+            <div>
+              <AIBox text={result} loading={loading} />
+              {result && (
+                <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                  <Btn onClick={copy} variant="secondary" style={{ flex:1, justifyContent:"center" }}>📋 העתק</Btn>
+                  {tool === "whatsapp" && sig && <Btn href={waLink(sig.ownerPhone)} target="_blank" variant="green" style={{ flex:1, justifyContent:"center" }}>💬 שלח ב-WA</Btn>}
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );

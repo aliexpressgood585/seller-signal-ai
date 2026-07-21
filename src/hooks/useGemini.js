@@ -1,9 +1,18 @@
 // src/hooks/useGemini.js
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
+export function getGeminiKey() {
+  return localStorage.getItem("seller_gemini_key") || import.meta.env.VITE_GEMINI_KEY || "";
+}
+
+export function setGeminiKey(key) {
+  if (key) localStorage.setItem("seller_gemini_key", key.trim());
+  else localStorage.removeItem("seller_gemini_key");
+}
+
 export async function askGemini(prompt) {
-  const key = import.meta.env.VITE_GEMINI_KEY;
-  if (!key) throw new Error("חסר VITE_GEMINI_KEY ב-.env");
+  const key = getGeminiKey();
+  if (!key) throw new Error("NO_KEY");
 
   const res = await fetch(GEMINI_URL, {
     method: "POST",
