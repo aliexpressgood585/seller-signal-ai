@@ -162,7 +162,8 @@ export function SignalDetail() {
 
   const TABS = [
     { id: "ai",      label: "🤖 ניתוח AI"       },
-    { id: "deals",   label: `🏛 עסקאות אמת${realDeals.length ? ` (${realDeals.length})` : ""}` },
+    // הטאב מופיע רק כשיש נתוני עסקאות אמיתיים במאגר
+    ...(realDeals.length ? [{ id: "deals", label: `🏛 עסקאות אמת (${realDeals.length})` }] : []),
     { id: "price",   label: "📈 היסטוריית מחיר" },
     { id: "buyers",  label: `👥 קונים (${matchingBuyers.length})` },
     { id: "crm",     label: "📋 CRM"             },
