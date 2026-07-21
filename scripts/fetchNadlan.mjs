@@ -1,17 +1,12 @@
 // scripts/fetchNadlan.mjs
-// שולף עסקאות נדל"ן אמיתיות מ-nadlan.gov.il (רשות המסים) בזמן ה-build,
-// ושומר אותן ל-src/lib/realDeals.json שנארז לתוך האפליקציה.
+// שולף עסקאות נדל"ן אמיתיות מ-nadlan.gov.il (רשות המסים) בזמן ה-build.
 //
-// nadlan.gov.il מגן על עצמו ב-WAF שחוסם בקשות שאינן דפדפן אמיתי (מחזיר דף
-// HTML של challenge במקום JSON). לכן אנחנו טוענים את האתר בדפדפן Headless
-// (Playwright), עוברים את ה-challenge, ומריצים את קריאות ה-API מתוך הדף
-// עצמו (same-origin, עם ה-cookies של ה-WAF).
+// nadlan.gov.il מוגן ב-Imperva Incapsula שחוסם קריאות API ישירות (גם מדפדפן
+// Headless). לכן במקום לקרוא ל-API בעצמנו, אנחנו *נוהגים בממשק האתר* כמו
+// משתמש אמיתי — מקלידים עיר, בוחרים תוצאה — ותופסים את תגובות ה-API שה-SPA
+// עצמו מקבל (page.on('response')). כך ה-challenge נעקף ע"י האפליקציה עצמה.
 //
-// זרימת ה-API:
-//   1. POST /Nadlan.REST/Main/GetDataByQuery  { query: "<עיר>" }  → מתאר מיקום
-//   2. POST /Nadlan.REST/Main/GetAssestAndDeals  <מתאר + PageNo>   → עסקאות
-//
-// הסקריפט תמיד יוצא בקוד 0 וכותב JSON תקין (אולי ריק) — כשל שליפה לא ישבור deploy.
+// הסקריפט תמיד יוצא בקוד 0 וכותב JSON תקין — כשל שליפה לא ישבור deploy.
 
 import { writeFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -31,7 +26,6 @@ const CITIES = [
 ];
 
 const MAX_PER_CITY = 20;
-const MAX_PAGES = 2;
 
 function toNum(v) {
   if (v == null) return null;
@@ -44,7 +38,7 @@ function normalizeDeal(d, city) {
   if (!price) return null;
   return {
     city,
-    address: (d.FULLADRESS || "").trim() || null,
+    address: (d.FULLADRESS || d.ADDRESS || "").trim() || null,
     price,
     date: (d.DEALDATETIME || d.DEALDATE || "").slice(0, 10) || null,
     rooms: toNum(d.ASSETROOMNUM),
@@ -55,45 +49,59 @@ function normalizeDeal(d, city) {
   };
 }
 
-// רץ בתוך הדפדפן: קורא ל-2 ה-endpoints ומחזיר את העסקאות הגולמיות של עיר אחת
-async function fetchCityInPage(page, city, maxPages) {
-  return page.evaluate(
-    async ({ city, maxPages }) => {
-      const BASE = "/Nadlan.REST/Main";
-      const post = async (path, body) => {
-        const res = await fetch(`${BASE}/${path}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json;charset=UTF-8" },
-          body: JSON.stringify(body),
-        });
-        const text = await res.text();
-        try {
-          return { ok: res.ok, data: JSON.parse(text) };
-        } catch {
-          return { ok: false, data: null, snippet: text.slice(0, 100) };
-        }
-      };
+async function findSearchInput(page) {
+  const selectors = [
+    "#myInput2",
+    "#SearchString",
+    'input[placeholder*="חיפוש"]',
+    'input[placeholder*="כתובת"]',
+    'input[placeholder*="עיר"]',
+    'input[type="search"]',
+    'input[type="text"]',
+  ];
+  for (const sel of selectors) {
+    const el = page.locator(sel).first();
+    if ((await el.count()) && (await el.isVisible().catch(() => false))) {
+      console.log(`    search input: ${sel}`);
+      return el;
+    }
+  }
+  return null;
+}
 
-      const loc = await post("GetDataByQuery", { query: city });
-      if (!loc.ok || !loc.data) {
-        return { error: `GetDataByQuery: ${loc.snippet || "no data"}` };
-      }
-      if (loc.data.DescLayerID == null && loc.data.X == null) {
-        return { error: "no location descriptor", loc: loc.data };
-      }
+async function searchCity(page, city) {
+  const input = await findSearchInput(page);
+  if (!input) {
+    console.log("    ⚠ no search input found");
+    return;
+  }
+  await input.click();
+  await input.fill("");
+  await input.type(city, { delay: 90 });
+  await page.waitForTimeout(1800); // המתנה ל-autocomplete
 
-      const all = [];
-      for (let page = 1; page <= maxPages; page++) {
-        const d = await post("GetAssestAndDeals", { ...loc.data, PageNo: page });
-        if (!d.ok || !d.data) break;
-        const results = d.data.AllResults || d.data.dealDetails || [];
-        if (!results.length) break;
-        all.push(...results);
-      }
-      return { results: all };
-    },
-    { city, maxPages }
-  );
+  // מנסים לבחור פריט ראשון מרשימת ההשלמה; אם אין — Enter
+  const acSelectors = [
+    "#autocomplete-list div",
+    ".autocomplete-items div",
+    ".ui-autocomplete li",
+    "ul.autocomplete li",
+    '[class*="autocomplete"] [class*="item"]',
+  ];
+  let clicked = false;
+  for (const sel of acSelectors) {
+    const item = page.locator(sel).first();
+    if ((await item.count()) && (await item.isVisible().catch(() => false))) {
+      console.log(`    autocomplete: ${sel}`);
+      await item.click().catch(() => {});
+      clicked = true;
+      break;
+    }
+  }
+  if (!clicked) {
+    console.log("    autocomplete: none, pressing Enter");
+    await input.press("Enter").catch(() => {});
+  }
 }
 
 async function main() {
@@ -107,43 +115,44 @@ async function main() {
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     locale: "he-IL",
+    viewport: { width: 1366, height: 900 },
   });
   const page = await context.newPage();
 
-  console.log("▶ loading nadlan.gov.il (passing WAF challenge)…");
-  await page.goto(SITE, { waitUntil: "domcontentloaded", timeout: 60000 });
-
-  // Imperva Incapsula מגיש דף challenge שמריץ JS (~5-8ש') ואז עושה reload.
-  // ממתינים עד שהתוכן כבר אינו דף ה-challenge (או עד timeout), עם reload בין הניסיונות.
-  const isChallenge = async () => {
-    const html = await page.content();
-    return /Incapsula|_Incapsula_Resource|Request unsuccessful|"Cache-Control" content="no-cache, no-store/i.test(html)
-      || html.length < 2000;
-  };
-  for (let i = 0; i < 6; i++) {
-    await page.waitForTimeout(4000);
-    if (!(await isChallenge())) {
-      console.log(`  ✓ challenge cleared after ~${(i + 1) * 4}s`);
-      break;
-    }
-    console.log(`  … still on challenge page, reloading (${i + 1})`);
+  // מאזין גלובלי: תופס כל תגובת GetAssestAndDeals שה-SPA מקבל
+  const captured = [];
+  page.on("response", async (res) => {
+    const url = res.url();
+    if (!/GetAssestAndDeals|GetAssetAndDeals/i.test(url)) return;
     try {
-      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
-    } catch {}
-  }
-  await page.waitForTimeout(1500);
-  console.log("  running API queries from browser context\n");
+      const json = await res.json();
+      const results = json?.AllResults || json?.dealDetails || [];
+      if (results.length) {
+        captured.push(...results);
+        console.log(`    ← captured ${results.length} deals from API`);
+      }
+    } catch {
+      /* ignore non-JSON */
+    }
+  });
+
+  console.log("▶ loading nadlan.gov.il …");
+  await page.goto(SITE, { waitUntil: "networkidle", timeout: 60000 });
+  await page.waitForTimeout(5000); // לתת ל-Incapsula + ל-SPA להסתדר
+  console.log("  loaded\n");
 
   for (const city of CITIES) {
     console.log(`▶ ${city}`);
+    const before = captured.length;
     try {
-      const out = await fetchCityInPage(page, city, MAX_PAGES);
-      if (out.error) {
-        console.log(`  ⚠ ${out.error}`);
-        continue;
+      await searchCity(page, city);
+      // ממתינים שתגיע תגובת API (עד 12 שניות)
+      for (let i = 0; i < 12 && captured.length === before; i++) {
+        await page.waitForTimeout(1000);
       }
+      const fresh = captured.splice(before); // לוקחים מה שהצטבר לעיר הזו
       const deals = [];
-      for (const r of out.results || []) {
+      for (const r of fresh) {
         const nd = normalizeDeal(r, city);
         if (nd) deals.push(nd);
       }
@@ -154,6 +163,9 @@ async function main() {
         total += trimmed.length;
       }
       console.log(`  ✓ ${trimmed.length} deals`);
+      // חוזרים לדף הבית לחיפוש הבא
+      await page.goto(SITE, { waitUntil: "networkidle", timeout: 60000 }).catch(() => {});
+      await page.waitForTimeout(1500);
     } catch (e) {
       console.log(`  ✗ ${e.message}`);
     }
