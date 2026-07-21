@@ -243,7 +243,7 @@ export function SignalDetail() {
           <div>
             {!insight && !analyzing && (
               <div style={{ textAlign: "center", padding: "20px 0" }}>
-                <Btn onClick={loadInsight}>🤖 נתח עם Gemini AI</Btn>
+                <Btn onClick={loadInsight}>🤖 נתח עם Claude AI</Btn>
               </div>
             )}
             {(insight || analyzing) && <AIBox text={insight} loading={analyzing} />}
