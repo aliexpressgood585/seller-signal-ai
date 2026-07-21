@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { SIGNALS, BUYERS, fmt, fmtFull, sColor, waLink, getPriceHistory } from "../lib/data";
+import { fmt, fmtFull, sColor, waLink, getPriceHistory } from "../lib/data";
 import { Ring, Spinner, AIBox, Btn, Card } from "../components/UI";
 import { askGemini, PROMPTS } from "../hooks/useGemini";
 import { useCRM, CRM_TYPES, fmtTs } from "../hooks/useCRM";
+import { useSignals, useBuyers, matchScore } from "../hooks/useStore";
 
 // ─── Price chart ─────────────────────────────────────────────
 function PriceChart({ signal }) {
@@ -117,7 +118,9 @@ function CRMLog({ entityId }) {
 export function SignalDetail() {
   const { id } = useParams();
   const nav = useNavigate();
-  const signal = SIGNALS.find(s => s.id === id);
+  const { signals } = useSignals();
+  const { buyers } = useBuyers();
+  const signal = signals.find(s => s.id === id);
 
   const [tab, setTab] = useState("ai");
   const [insight, setInsight] = useState("");
@@ -128,10 +131,7 @@ export function SignalDetail() {
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(""), 2500); };
 
   const matchingBuyers = signal
-    ? BUYERS.filter(b =>
-        signal.price >= b.bMin && signal.price <= b.bMax &&
-        signal.rooms >= b.rMin && signal.rooms <= b.rMax
-      )
+    ? buyers.filter(b => matchScore(b, signal) > 0)
     : [];
 
   async function loadInsight() {

@@ -95,12 +95,12 @@ export const SIGNALS = RAW.map((p, i) => ({
 })).sort((a, b) => b.score - a.score);
 
 export const PIPELINE = [
-  { id:"p1", stage:"lead",      title:"רוטשילד 53",   owner:"אורי שמש",       phone:"052-3847591", value:5450000, prob:20, next:"שיחת היכרות",    date:"היום 18:30"   },
-  { id:"p2", stage:"contact",   title:"הצרפתית 11",   owner:"רוני לבנשטיין",  phone:"054-6128374", value:3950000, prob:35, next:"שליחת דוח שוק",  date:"מחר 09:30"    },
-  { id:"p3", stage:"visit",     title:"שינקין 7",      owner:"מיכל פרידמן",    phone:"050-9274836", value:3290000, prob:50, next:"ביקור נכס",       date:"יום ג׳ 11:00" },
-  { id:"p4", stage:"offer",     title:"פינסקר 6",      owner:"שני הרשקוביץ",   phone:"054-2938475", value:3050000, prob:65, next:"הגשת הצעה",       date:"מחר 16:00"    },
-  { id:"p5", stage:"exclusive", title:"יוספטל 8",      owner:"ליאת שפירא",     phone:"053-2847365", value:3850000, prob:80, next:"חתימת בלעדיות",  date:"היום 20:00"   },
-  { id:"p6", stage:"contract",  title:"קינג ג׳ורג׳ 44", owner:"ניר אלמוג",    phone:"054-9183726", value:3480000, prob:92, next:"סגירת חוזה",      date:"יום ה׳ 10:00" },
+  { id:"p1", stage:"lead",      title:"רוטשילד 53",      owner:"אורי שמש",       phone:"052-3847591", value:5450000, prob:20, commissionRate:2,   next:"שיחת היכרות",    date:"היום 18:30"   },
+  { id:"p2", stage:"contact",   title:"הצרפתית 11",      owner:"רוני לבנשטיין",  phone:"054-6128374", value:3950000, prob:35, commissionRate:2,   next:"שליחת דוח שוק",  date:"מחר 09:30"    },
+  { id:"p3", stage:"visit",     title:"שינקין 7",         owner:"מיכל פרידמן",    phone:"050-9274836", value:3290000, prob:50, commissionRate:1.5, next:"ביקור נכס",       date:"יום ג׳ 11:00" },
+  { id:"p4", stage:"offer",     title:"פינסקר 6",         owner:"שני הרשקוביץ",   phone:"054-2938475", value:3050000, prob:65, commissionRate:2,   next:"הגשת הצעה",       date:"מחר 16:00"    },
+  { id:"p5", stage:"exclusive", title:"יוספטל 8",         owner:"ליאת שפירא",     phone:"053-2847365", value:3850000, prob:80, commissionRate:2,   next:"חתימת בלעדיות",  date:"היום 20:00"   },
+  { id:"p6", stage:"contract",  title:"קינג ג׳ורג׳ 44",  owner:"ניר אלמוג",      phone:"054-9183726", value:3480000, prob:92, commissionRate:2,   next:"סגירת חוזה",      date:"יום ה׳ 10:00" },
 ];
 
 export const BUYERS = [
