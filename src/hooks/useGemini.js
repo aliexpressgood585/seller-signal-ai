@@ -1,34 +1,38 @@
-// src/hooks/useGemini.js
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+// src/hooks/useGemini.js  — backed by Claude API
+const CLAUDE_URL = "https://api.anthropic.com/v1/messages";
+const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
 
 export function getGeminiKey() {
-  return localStorage.getItem("seller_gemini_key") || import.meta.env.VITE_GEMINI_KEY || "";
+  return localStorage.getItem("seller_claude_key") || import.meta.env.VITE_CLAUDE_KEY || "";
 }
 
 export function setGeminiKey(key) {
-  if (key) localStorage.setItem("seller_gemini_key", key.trim());
-  else localStorage.removeItem("seller_gemini_key");
+  if (key) localStorage.setItem("seller_claude_key", key.trim());
+  else localStorage.removeItem("seller_claude_key");
 }
 
 export async function askGemini(prompt) {
   const key = getGeminiKey();
   if (!key) throw new Error("NO_KEY");
 
-  const res = await fetch(GEMINI_URL, {
+  const res = await fetch(CLAUDE_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-goog-api-key": key,
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 700 },
+      model: CLAUDE_MODEL,
+      max_tokens: 700,
+      messages: [{ role: "user", content: prompt }],
     }),
   });
 
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return data.content?.[0]?.text || "";
 }
 
 export const PROMPTS = {

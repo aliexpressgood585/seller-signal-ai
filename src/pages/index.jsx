@@ -675,24 +675,24 @@ function GeminiKeySetup({ onSaved }) {
   return (
     <Card style={{ padding:20, border:"1px solid rgba(255,160,0,0.3)", background:"rgba(255,160,0,0.05)" }}>
       <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>🤖</div>
-      <div style={{ fontSize:14, fontWeight:700, color:"#fff", textAlign:"center", marginBottom:6 }}>הגדר מפתח Gemini AI</div>
+      <div style={{ fontSize:14, fontWeight:700, color:"#fff", textAlign:"center", marginBottom:6 }}>הגדר מפתח Claude AI</div>
       <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", textAlign:"center", marginBottom:16, lineHeight:1.6 }}>
-        כדי להשתמש בכלי ה-AI נדרש מפתח API מ-Google Gemini.<br />
+        כדי להשתמש בכלי ה-AI נדרש מפתח API מ-Anthropic Claude.<br />
         המפתח נשמר רק במכשיר שלך — לא נשלח לשום שרת.
       </div>
       <div style={S.row}>
-        <label style={S.label}>מפתח Gemini API</label>
+        <label style={S.label}>מפתח Claude API</label>
         <input
           style={{ ...S.input, fontFamily:"monospace", fontSize:11 }}
           value={k}
           onChange={e => setK(e.target.value)}
-          placeholder="AIza..."
+          placeholder="sk-ant-..."
           type="password"
           autoComplete="off"
         />
       </div>
       <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:14, textAlign:"center" }}>
-        קבל מפתח חינמי בכתובת: <span style={{ color:"#FFA000" }}>aistudio.google.com</span>
+        קבל מפתח בכתובת: <span style={{ color:"#FFA000" }}>console.anthropic.com</span>
       </div>
       <Btn onClick={save} disabled={!k.trim()} style={{ width:"100%", justifyContent:"center" }}>שמור והפעל AI ✓</Btn>
     </Card>
@@ -758,7 +758,7 @@ export function AITools() {
 
       {showKeyEdit && hasKey && (
         <Card style={{ padding:14 }}>
-          <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>מפתח פעיל: AIza•••••••••</div>
+          <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>מפתח פעיל: sk-ant•••••••••</div>
           <Btn onClick={clearKey} variant="ghost" style={{ color:"#F44336", width:"100%", justifyContent:"center" }}>🗑 מחק מפתח</Btn>
         </Card>
       )}
