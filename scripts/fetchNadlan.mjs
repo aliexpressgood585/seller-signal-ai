@@ -111,10 +111,28 @@ async function main() {
   const page = await context.newPage();
 
   console.log("▶ loading nadlan.gov.il (passing WAF challenge)…");
-  await page.goto(SITE, { waitUntil: "networkidle", timeout: 60000 });
-  // שהיה קצרה כדי לתת ל-challenge של ה-WAF להסתיים ולהניח cookies
-  await page.waitForTimeout(3500);
-  console.log("  page loaded, running API queries from browser context\n");
+  await page.goto(SITE, { waitUntil: "domcontentloaded", timeout: 60000 });
+
+  // Imperva Incapsula מגיש דף challenge שמריץ JS (~5-8ש') ואז עושה reload.
+  // ממתינים עד שהתוכן כבר אינו דף ה-challenge (או עד timeout), עם reload בין הניסיונות.
+  const isChallenge = async () => {
+    const html = await page.content();
+    return /Incapsula|_Incapsula_Resource|Request unsuccessful|"Cache-Control" content="no-cache, no-store/i.test(html)
+      || html.length < 2000;
+  };
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(4000);
+    if (!(await isChallenge())) {
+      console.log(`  ✓ challenge cleared after ~${(i + 1) * 4}s`);
+      break;
+    }
+    console.log(`  … still on challenge page, reloading (${i + 1})`);
+    try {
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+    } catch {}
+  }
+  await page.waitForTimeout(1500);
+  console.log("  running API queries from browser context\n");
 
   for (const city of CITIES) {
     console.log(`▶ ${city}`);
