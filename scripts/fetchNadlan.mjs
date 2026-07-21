@@ -2,21 +2,25 @@
 // שולף עסקאות נדל"ן אמיתיות מ-nadlan.gov.il (רשות המסים) בזמן ה-build,
 // ושומר אותן ל-src/lib/realDeals.json שנארז לתוך האפליקציה.
 //
-// הזרימה של ה-API (ידועה מהקהילה, אין API רשמי):
-//   1. POST /Nadlan.REST/Main/GetDataByQuery  { query: "<עיר>" }  → מתאר מיקום
-//   2. POST /Nadlan.REST/Main/GetAssestAndDeals  <מתאר המיקום>     → עסקאות
+// nadlan.gov.il מגן על עצמו ב-WAF שחוסם בקשות שאינן דפדפן אמיתי (מחזיר דף
+// HTML של challenge במקום JSON). לכן אנחנו טוענים את האתר בדפדפן Headless
+// (Playwright), עוברים את ה-challenge, ומריצים את קריאות ה-API מתוך הדף
+// עצמו (same-origin, עם ה-cookies של ה-WAF).
 //
-// הסקריפט תמיד יוצא בקוד 0 וכותב JSON תקין (אולי ריק) — כדי שכשל שליפה
-// לא ישבור את ה-deploy. האפליקציה פשוט תציג עסקאות היכן שיש.
+// זרימת ה-API:
+//   1. POST /Nadlan.REST/Main/GetDataByQuery  { query: "<עיר>" }  → מתאר מיקום
+//   2. POST /Nadlan.REST/Main/GetAssestAndDeals  <מתאר + PageNo>   → עסקאות
+//
+// הסקריפט תמיד יוצא בקוד 0 וכותב JSON תקין (אולי ריק) — כשל שליפה לא ישבור deploy.
 
 import { writeFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
 
 const OUT = fileURLToPath(new URL("../src/lib/realDeals.json", import.meta.url));
-const BASE = "https://www.nadlan.gov.il/Nadlan.REST/Main";
+const SITE = "https://www.nadlan.gov.il/";
 
-// הערים שמופיעות באפליקציה
 const CITIES = [
   "תל אביב יפו",
   "גבעתיים",
@@ -26,34 +30,9 @@ const CITIES = [
   "חולון",
 ];
 
-const MAX_PER_CITY = 20;   // כמה עסקאות אחרונות לשמור לכל עיר
-const MAX_PAGES = 2;       // כמה עמודים למשוך מ-nadlan לכל עיר
+const MAX_PER_CITY = 20;
+const MAX_PAGES = 2;
 
-const HEADERS = {
-  "Content-Type": "application/json;charset=UTF-8",
-  "Accept": "application/json, text/plain, */*",
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-  "Referer": "https://www.nadlan.gov.il/",
-  "Origin": "https://www.nadlan.gov.il",
-};
-
-async function postJSON(path, body) {
-  const res = await fetch(`${BASE}/${path}`, {
-    method: "POST",
-    headers: HEADERS,
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} on ${path}`);
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`Non-JSON response on ${path}: ${text.slice(0, 120)}`);
-  }
-}
-
-// מנקה מספר ("1,234,567" → 1234567)
 function toNum(v) {
   if (v == null) return null;
   const n = Number(String(v).replace(/[^\d.]/g, ""));
@@ -76,50 +55,93 @@ function normalizeDeal(d, city) {
   };
 }
 
-async function fetchCity(city) {
-  console.log(`\n▶ ${city}`);
-  const loc = await postJSON("GetDataByQuery", { query: city });
-  if (!loc || (loc.DescLayerID == null && loc.X == null)) {
-    console.log(`  ⚠ no location descriptor for "${city}"`);
-    return [];
-  }
-  console.log(`  location: DescLayerID=${loc.DescLayerID} X=${loc.X} Y=${loc.Y}`);
+// רץ בתוך הדפדפן: קורא ל-2 ה-endpoints ומחזיר את העסקאות הגולמיות של עיר אחת
+async function fetchCityInPage(page, city, maxPages) {
+  return page.evaluate(
+    async ({ city, maxPages }) => {
+      const BASE = "/Nadlan.REST/Main";
+      const post = async (path, body) => {
+        const res = await fetch(`${BASE}/${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json;charset=UTF-8" },
+          body: JSON.stringify(body),
+        });
+        const text = await res.text();
+        try {
+          return { ok: res.ok, data: JSON.parse(text) };
+        } catch {
+          return { ok: false, data: null, snippet: text.slice(0, 100) };
+        }
+      };
 
-  const deals = [];
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const req = { ...loc, PageNo: page };
-    const data = await postJSON("GetAssestAndDeals", req);
-    const results = data?.AllResults || data?.dealDetails || [];
-    console.log(`  page ${page}: ${results.length} raw results`);
-    if (!results.length) break;
-    for (const r of results) {
-      const nd = normalizeDeal(r, city);
-      if (nd) deals.push(nd);
-    }
-  }
+      const loc = await post("GetDataByQuery", { query: city });
+      if (!loc.ok || !loc.data) {
+        return { error: `GetDataByQuery: ${loc.snippet || "no data"}` };
+      }
+      if (loc.data.DescLayerID == null && loc.data.X == null) {
+        return { error: "no location descriptor", loc: loc.data };
+      }
 
-  // ממיין מהחדש לישן ומגביל
-  deals.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  const trimmed = deals.slice(0, MAX_PER_CITY);
-  console.log(`  ✓ kept ${trimmed.length} deals`);
-  return trimmed;
+      const all = [];
+      for (let page = 1; page <= maxPages; page++) {
+        const d = await post("GetAssestAndDeals", { ...loc.data, PageNo: page });
+        if (!d.ok || !d.data) break;
+        const results = d.data.AllResults || d.data.dealDetails || [];
+        if (!results.length) break;
+        all.push(...results);
+      }
+      return { results: all };
+    },
+    { city, maxPages }
+  );
 }
 
 async function main() {
   const byCity = {};
   let total = 0;
 
+  const browser = await chromium.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+  const context = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    locale: "he-IL",
+  });
+  const page = await context.newPage();
+
+  console.log("▶ loading nadlan.gov.il (passing WAF challenge)…");
+  await page.goto(SITE, { waitUntil: "networkidle", timeout: 60000 });
+  // שהיה קצרה כדי לתת ל-challenge של ה-WAF להסתיים ולהניח cookies
+  await page.waitForTimeout(3500);
+  console.log("  page loaded, running API queries from browser context\n");
+
   for (const city of CITIES) {
+    console.log(`▶ ${city}`);
     try {
-      const deals = await fetchCity(city);
-      if (deals.length) {
-        byCity[city] = deals;
-        total += deals.length;
+      const out = await fetchCityInPage(page, city, MAX_PAGES);
+      if (out.error) {
+        console.log(`  ⚠ ${out.error}`);
+        continue;
       }
+      const deals = [];
+      for (const r of out.results || []) {
+        const nd = normalizeDeal(r, city);
+        if (nd) deals.push(nd);
+      }
+      deals.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      const trimmed = deals.slice(0, MAX_PER_CITY);
+      if (trimmed.length) {
+        byCity[city] = trimmed;
+        total += trimmed.length;
+      }
+      console.log(`  ✓ ${trimmed.length} deals`);
     } catch (e) {
-      console.log(`  ✗ ${city}: ${e.message}`);
+      console.log(`  ✗ ${e.message}`);
     }
   }
+
+  await browser.close();
 
   const payload = {
     generatedAt: new Date().toISOString(),
@@ -127,14 +149,14 @@ async function main() {
     total,
     byCity,
   };
-
   await mkdir(dirname(OUT), { recursive: true });
   await writeFile(OUT, JSON.stringify(payload, null, 2), "utf8");
-  console.log(`\n═══ wrote ${total} deals across ${Object.keys(byCity).length} cities → ${OUT}`);
+  console.log(
+    `\n═══ wrote ${total} deals across ${Object.keys(byCity).length} cities → ${OUT}`
+  );
 }
 
 main().catch((e) => {
-  // לעולם לא נכשיל את ה-build בגלל שליפה
   console.error("fetchNadlan failed (non-fatal):", e.message);
   process.exit(0);
 });
